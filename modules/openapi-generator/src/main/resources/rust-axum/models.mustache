@@ -961,7 +961,15 @@ impl std::str::FromStr for {{{classname}}} {
     type Err = serde_json::Error;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        serde_json::from_str(s)
+        // For untagged enums that can be String or structured, handle plain strings
+        let json_value = if s.trim_start().starts_with('{') || s.trim_start().starts_with('[') || s.trim_start().starts_with('"') {
+            // Already looks like JSON
+            s.to_string()
+        } else {
+            // Wrap plain string in quotes to make it valid JSON for String variant
+            format!("\"{}\"", s.replace('"', "\\\""))
+        };
+        serde_json::from_str(&json_value)
     }
 }
 
@@ -1036,7 +1044,15 @@ impl std::str::FromStr for {{{classname}}} {
     type Err = serde_json::Error;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        serde_json::from_str(s)
+        // For untagged enums that can be String or structured, handle plain strings
+        let json_value = if s.trim_start().starts_with('{') || s.trim_start().starts_with('[') || s.trim_start().starts_with('"') {
+            // Already looks like JSON
+            s.to_string()
+        } else {
+            // Wrap plain string in quotes to make it valid JSON for String variant
+            format!("\"{}\"", s.replace('"', "\\\""))
+        };
+        serde_json::from_str(&json_value)
     }
 }
 

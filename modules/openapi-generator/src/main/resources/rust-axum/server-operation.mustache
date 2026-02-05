@@ -287,7 +287,7 @@ where
               }
               {{/isPrimitiveType}}
               {{^isPrimitiveType}}
-              match serde_json::from_str::<{{{dataType}}}>(value) {
+              match value.parse::<{{{dataType}}}>() {
                 Ok(parsed) => parsed,
                 Err(e) => {
                   return Response::builder()
@@ -326,7 +326,7 @@ where
               v.parse().ok()
               {{/items.isPrimitiveType}}
               {{^items.isPrimitiveType}}
-              serde_json::from_str::<{{{items.dataType}}}>(v).ok()
+              v.parse::<{{{items.dataType}}}>().ok()
               {{/items.isPrimitiveType}}
             })
             .collect::<{{{dataType}}}>()
@@ -346,7 +346,7 @@ where
               }
               {{/isPrimitiveType}}
               {{^isPrimitiveType}}
-              match serde_json::from_str::<{{{dataType}}}>(value) {
+              match value.parse::<{{{dataType}}}>() {
                 Ok(parsed) => parsed,
                 Err(e) => {
                   return Response::builder()
@@ -392,7 +392,7 @@ where
               v.parse().ok()
               {{/items.isPrimitiveType}}
               {{^items.isPrimitiveType}}
-              serde_json::from_str::<{{{items.dataType}}}>(v).ok()
+              v.parse::<{{{items.dataType}}}>().ok()
               {{/items.isPrimitiveType}}
             })
             .collect::<{{{dataType}}}>()
@@ -405,7 +405,7 @@ where
             value.parse().ok()
             {{/isPrimitiveType}}
             {{^isPrimitiveType}}
-            serde_json::from_str::<{{{dataType}}}>(value).ok()
+            value.parse::<{{{dataType}}}>().ok()
             {{/isPrimitiveType}}
           })
         })
@@ -422,7 +422,7 @@ where
               v.parse().ok()
               {{/items.isPrimitiveType}}
               {{^items.isPrimitiveType}}
-              serde_json::from_str::<{{{items.dataType}}}>(v).ok()
+              v.parse::<{{{items.dataType}}}>().ok()
               {{/items.isPrimitiveType}}
             })
             .collect::<{{{dataType}}}>()
@@ -435,7 +435,7 @@ where
             value.parse().ok()
             {{/isPrimitiveType}}
             {{^isPrimitiveType}}
-            serde_json::from_str::<{{{dataType}}}>(value).ok()
+            value.parse::<{{{dataType}}}>().ok()
             {{/isPrimitiveType}}
           })
         })
