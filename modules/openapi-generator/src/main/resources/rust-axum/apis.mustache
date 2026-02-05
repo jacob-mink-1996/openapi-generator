@@ -58,7 +58,17 @@ pub trait {{classnamePascalCase}}<E: std::fmt::Debug + Send + Sync + 'static = (
       {{#bodyParam}}
       {{#vendorExtensions}}
         {{^x-consumes-plain-text}}
+          {{#x-consumes-form-urlencoded}}
+            {{#formParams.size}}
+            body: {{^ownedRequest}}&{{/ownedRequest}}{{^required}}Option<{{/required}}models::{{{operationIdCamelCase}}}FormParams{{^required}}>{{/required}},
+            {{/formParams.size}}
+            {{^formParams.size}}
             body: {{^ownedRequest}}&{{/ownedRequest}}{{^required}}Option<{{/required}}{{{dataType}}}{{^required}}>{{/required}},
+            {{/formParams.size}}
+          {{/x-consumes-form-urlencoded}}
+          {{^x-consumes-form-urlencoded}}
+            body: {{^ownedRequest}}&{{/ownedRequest}}{{^required}}Option<{{/required}}{{{dataType}}}{{^required}}>{{/required}},
+          {{/x-consumes-form-urlencoded}}
         {{/x-consumes-plain-text}}
         {{#x-consumes-plain-text}}
           {{#isString}}
@@ -73,7 +83,12 @@ pub trait {{classnamePascalCase}}<E: std::fmt::Debug + Send + Sync + 'static = (
     {{/x-consumes-multipart}}
     {{/x-consumes-multipart-related}}
     {{#x-consumes-multipart}}
+    {{#formParams.size}}
+    body: {{^ownedRequest}}&{{/ownedRequest}}models::{{{operationIdCamelCase}}}FormParams,
+    {{/formParams.size}}
+    {{^formParams.size}}
     body: Multipart,
+    {{/formParams.size}}
     {{/x-consumes-multipart}}
     {{#x-consumes-multipart-related}}
     body: axum::body::Body,

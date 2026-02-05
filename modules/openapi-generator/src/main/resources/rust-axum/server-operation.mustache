@@ -35,7 +35,12 @@ async fn {{#vendorExtensions}}{{{x-operation-id}}}{{/vendorExtensions}}<I, A, E{
           Json(body): Json<{{^required}}Option<{{/required}}{{{dataType}}}{{^required}}>{{/required}}>,
       {{/x-consumes-json}}
       {{#x-consumes-form-urlencoded}}
+        {{#formParams.size}}
+          Form(body): Form<{{^required}}Option<{{/required}}models::{{{operationIdCamelCase}}}FormParams{{^required}}>{{/required}}>,
+        {{/formParams.size}}
+        {{^formParams.size}}
           Form(body): Form<{{^required}}Option<{{/required}}{{{dataType}}}{{^required}}>{{/required}}>,
+        {{/formParams.size}}
       {{/x-consumes-form-urlencoded}}
       {{#x-consumes-plain-text}}
         {{#isString}}
@@ -50,7 +55,12 @@ async fn {{#vendorExtensions}}{{{x-operation-id}}}{{/vendorExtensions}}<I, A, E{
 {{/x-consumes-multipart}}
 {{/x-consumes-multipart-related}}
 {{#x-consumes-multipart}}
+  {{#formParams.size}}
   body: Multipart,
+  {{/formParams.size}}
+  {{^formParams.size}}
+  body: Multipart,
+  {{/formParams.size}}
 {{/x-consumes-multipart}}
 {{#x-consumes-multipart-related}}
   body: axum::body::Body,
@@ -143,6 +153,305 @@ where
   {{/-last}}
 {{/headerParams}}
 
+{{#vendorExtensions}}
+{{#x-consumes-multipart}}
+{{#formParams.size}}
+  // Extract multipart form fields
+  use axum::extract::multipart::Field;
+  let mut multipart = body;
+  let mut form_values: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+  let mut form_files: std::collections::HashMap<String, ByteArray> = std::collections::HashMap::new();
+  
+  while let Some(field) = {
+    match multipart.next_field().await {
+      Ok(Some(field)) => Some(field),
+      Ok(None) => None,
+      Err(e) => {
+        error!(error = ?e);
+        return Response::builder()
+          .status(StatusCode::BAD_REQUEST)
+          .body(Body::from(format!("Error reading multipart field: {e}")))
+          .map_err(|e| { error!(error = ?e); StatusCode::INTERNAL_SERVER_ERROR });
+      }
+    }
+  } {
+    let field_name = match field.name() {
+      Some(name) => name.to_string(),
+      None => {
+        return Response::builder()
+          .status(StatusCode::BAD_REQUEST)
+          .body(Body::from("Missing field name in multipart form"))
+          .map_err(|e| { error!(error = ?e); StatusCode::INTERNAL_SERVER_ERROR });
+      }
+    };
+    
+    match field_name.as_str() {
+      {{#formParams}}
+      "{{{baseName}}}" => {
+        {{#isFile}}
+        {{#isBinary}}
+        match field.bytes().await {
+          Ok(bytes) => {
+            form_files.insert(field_name.clone(), ByteArray(bytes.to_vec()));
+          }
+          Err(e) => {
+            error!(error = ?e);
+            return Response::builder()
+              .status(StatusCode::BAD_REQUEST)
+              .body(Body::from(format!("Error reading file field {{{baseName}}}: {e}")))
+              .map_err(|e| { error!(error = ?e); StatusCode::INTERNAL_SERVER_ERROR });
+          }
+        }
+        {{/isBinary}}
+        {{^isBinary}}
+        match field.text().await {
+          Ok(text) => {
+            form_values.entry(field_name.clone()).or_insert_with(Vec::new).push(text);
+          }
+          Err(e) => {
+            error!(error = ?e);
+            return Response::builder()
+              .status(StatusCode::BAD_REQUEST)
+              .body(Body::from(format!("Error reading field {{{baseName}}}: {e}")))
+              .map_err(|e| { error!(error = ?e); StatusCode::INTERNAL_SERVER_ERROR });
+          }
+        }
+        {{/isBinary}}
+        {{/isFile}}
+        {{^isFile}}
+        match field.text().await {
+          Ok(text) => {
+            form_values.entry(field_name.clone()).or_insert_with(Vec::new).push(text);
+          }
+          Err(e) => {
+            error!(error = ?e);
+            return Response::builder()
+              .status(StatusCode::BAD_REQUEST)
+              .body(Body::from(format!("Error reading field {{{baseName}}}: {e}")))
+              .map_err(|e| { error!(error = ?e); StatusCode::INTERNAL_SERVER_ERROR });
+          }
+        }
+        {{/isFile}}
+      },
+      {{/formParams}}
+      _ => {
+        // Unknown field, skip it
+      }
+    }
+  }
+  
+  // Convert to FormParams model
+  let body = models::{{{operationIdCamelCase}}}FormParams {
+    {{#formParams}}
+    {{#required}}
+    {{{paramName}}}: {
+      {{#isFile}}
+      {{#isBinary}}
+      match form_files.get("{{{baseName}}}").cloned() {
+        Some(value) => value,
+        None => {
+          return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(Body::from(format!("Missing required form field: {{{baseName}}}")))
+            .map_err(|e| { error!(error = ?e); StatusCode::INTERNAL_SERVER_ERROR });
+        }
+      }
+      {{/isBinary}}
+      {{^isBinary}}
+      match form_values.get("{{{baseName}}}") {
+        Some(values) => {
+          {{#isArray}}
+          values.iter()
+            .filter_map(|v| {
+              {{#items.isPrimitiveType}}
+              v.parse().ok()
+              {{/items.isPrimitiveType}}
+              {{^items.isPrimitiveType}}
+              serde_json::from_str::<{{{items.dataType}}}>(v).ok()
+              {{/items.isPrimitiveType}}
+            })
+            .collect::<{{{dataType}}}>()
+          {{/isArray}}
+          {{^isArray}}
+          match values.first() {
+            Some(value) => {
+              {{#isPrimitiveType}}
+              match value.parse() {
+                Ok(parsed) => parsed,
+                Err(_) => {
+                  return Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body(Body::from(format!("Invalid value for form field: {{{baseName}}}")))
+                    .map_err(|e| { error!(error = ?e); StatusCode::INTERNAL_SERVER_ERROR });
+                }
+              }
+              {{/isPrimitiveType}}
+              {{^isPrimitiveType}}
+              match serde_json::from_str::<{{{dataType}}}>(value) {
+                Ok(parsed) => parsed,
+                Err(e) => {
+                  return Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body(Body::from(format!("Invalid value for form field: {{{baseName}}}: {e}")))
+                    .map_err(|e| { error!(error = ?e); StatusCode::INTERNAL_SERVER_ERROR });
+                }
+              }
+              {{/isPrimitiveType}}
+            },
+            None => {
+              return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Body::from(format!("Missing required form field: {{{baseName}}}")))
+                .map_err(|e| { error!(error = ?e); StatusCode::INTERNAL_SERVER_ERROR });
+            }
+          }
+          {{/isArray}}
+        },
+        None => {
+          return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(Body::from(format!("Missing required form field: {{{baseName}}}")))
+            .map_err(|e| { error!(error = ?e); StatusCode::INTERNAL_SERVER_ERROR });
+        }
+      }
+      {{/isBinary}}
+      {{/isFile}}
+      {{^isFile}}
+      match form_values.get("{{{baseName}}}") {
+        Some(values) => {
+          {{#isArray}}
+          values.iter()
+            .filter_map(|v| {
+              {{#items.isPrimitiveType}}
+              v.parse().ok()
+              {{/items.isPrimitiveType}}
+              {{^items.isPrimitiveType}}
+              serde_json::from_str::<{{{items.dataType}}}>(v).ok()
+              {{/items.isPrimitiveType}}
+            })
+            .collect::<{{{dataType}}}>()
+          {{/isArray}}
+          {{^isArray}}
+          match values.first() {
+            Some(value) => {
+              {{#isPrimitiveType}}
+              match value.parse() {
+                Ok(parsed) => parsed,
+                Err(_) => {
+                  return Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body(Body::from(format!("Invalid value for form field: {{{baseName}}}")))
+                    .map_err(|e| { error!(error = ?e); StatusCode::INTERNAL_SERVER_ERROR });
+                }
+              }
+              {{/isPrimitiveType}}
+              {{^isPrimitiveType}}
+              match serde_json::from_str::<{{{dataType}}}>(value) {
+                Ok(parsed) => parsed,
+                Err(e) => {
+                  return Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body(Body::from(format!("Invalid value for form field: {{{baseName}}}: {e}")))
+                    .map_err(|e| { error!(error = ?e); StatusCode::INTERNAL_SERVER_ERROR });
+                }
+              }
+              {{/isPrimitiveType}}
+            },
+            None => {
+              return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Body::from(format!("Missing required form field: {{{baseName}}}")))
+                .map_err(|e| { error!(error = ?e); StatusCode::INTERNAL_SERVER_ERROR });
+            }
+          }
+          {{/isArray}}
+        },
+        None => {
+          return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(Body::from(format!("Missing required form field: {{{baseName}}}")))
+            .map_err(|e| { error!(error = ?e); StatusCode::INTERNAL_SERVER_ERROR });
+        }
+      }
+      {{/isFile}}
+    },
+    {{/required}}
+    {{^required}}
+    {{{paramName}}}: {
+      {{#isFile}}
+      {{#isBinary}}
+      form_files.get("{{{baseName}}}").cloned()
+      {{/isBinary}}
+      {{^isBinary}}
+      form_values.get("{{{baseName}}}")
+        {{#isArray}}
+        .map(|values| {
+          values.iter()
+            .filter_map(|v| {
+              {{#items.isPrimitiveType}}
+              v.parse().ok()
+              {{/items.isPrimitiveType}}
+              {{^items.isPrimitiveType}}
+              serde_json::from_str::<{{{items.dataType}}}>(v).ok()
+              {{/items.isPrimitiveType}}
+            })
+            .collect::<{{{dataType}}}>()
+        })
+        {{/isArray}}
+        {{^isArray}}
+        .and_then(|values| {
+          values.first().and_then(|value| {
+            {{#isPrimitiveType}}
+            value.parse().ok()
+            {{/isPrimitiveType}}
+            {{^isPrimitiveType}}
+            serde_json::from_str::<{{{dataType}}}>(value).ok()
+            {{/isPrimitiveType}}
+          })
+        })
+        {{/isArray}}
+      {{/isBinary}}
+      {{/isFile}}
+      {{^isFile}}
+      form_values.get("{{{baseName}}}")
+        {{#isArray}}
+        .map(|values| {
+          values.iter()
+            .filter_map(|v| {
+              {{#items.isPrimitiveType}}
+              v.parse().ok()
+              {{/items.isPrimitiveType}}
+              {{^items.isPrimitiveType}}
+              serde_json::from_str::<{{{items.dataType}}}>(v).ok()
+              {{/items.isPrimitiveType}}
+            })
+            .collect::<{{{dataType}}}>()
+        })
+        {{/isArray}}
+        {{^isArray}}
+        .and_then(|values| {
+          values.first().and_then(|value| {
+            {{#isPrimitiveType}}
+            value.parse().ok()
+            {{/isPrimitiveType}}
+            {{^isPrimitiveType}}
+            serde_json::from_str::<{{{dataType}}}>(value).ok()
+            {{/isPrimitiveType}}
+          })
+        })
+        {{/isArray}}
+      {{/isFile}}
+      {{#isNullable}}
+      .map(|v| Nullable::Present(v))
+      {{/isNullable}}
+    },
+    {{/required}}
+    {{/formParams}}
+  };
+{{/formParams.size}}
+{{/x-consumes-multipart}}
+{{/vendorExtensions}}
+
   {{^disableValidator}}
     {{^allowBlockingValidator}}
       #[allow(clippy::redundant_closure)]
@@ -168,6 +477,11 @@ where
         {{/bodyParam}}
       {{/x-consumes-multipart}}
       {{/x-consumes-multipart-related}}
+      {{#x-consumes-multipart}}
+      {{#formParams.size}}
+        body,
+      {{/formParams.size}}
+      {{/x-consumes-multipart}}
     )
   {{^allowBlockingValidator}}).await.unwrap(){{/allowBlockingValidator}};
 
@@ -188,6 +502,11 @@ where
     {{/bodyParam}}
   {{/x-consumes-multipart}}
   {{/x-consumes-multipart-related}}
+  {{#x-consumes-multipart}}
+  {{#formParams.size}}
+    body,
+  {{/formParams.size}}
+  {{/x-consumes-multipart}}
   )) = validation else {
     return Response::builder()
             .status(StatusCode::BAD_REQUEST)
@@ -276,7 +595,12 @@ let result = api_impl.as_ref().{{#vendorExtensions}}{{{x-operation-id}}}{{/vendo
         {{/x-consumes-multipart}}
         {{/x-consumes-multipart-related}}
         {{#x-consumes-multipart}}
+        {{#formParams.size}}
+          {{^ownedRequest}}&{{/ownedRequest}}body,
+        {{/formParams.size}}
+        {{^formParams.size}}
           body,
+        {{/formParams.size}}
         {{/x-consumes-multipart}}
         {{#x-consumes-multipart-related}}
           body,

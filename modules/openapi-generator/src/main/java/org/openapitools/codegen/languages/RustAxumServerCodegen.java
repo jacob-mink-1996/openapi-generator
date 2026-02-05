@@ -64,6 +64,7 @@ public class RustAxumServerCodegen extends AbstractRustCodegen implements Codege
     private Boolean basicAuthorization = false;
     private Boolean basicAnalytic = false;
     private Boolean ownedRequest = false;
+    private Boolean skipXssValidation = false;
 
     // Types
     private static final String uuidType = "uuid::Uuid";
@@ -353,6 +354,13 @@ public class RustAxumServerCodegen extends AbstractRustCodegen implements Codege
         } else {
             additionalProperties.put("ownedRequest", ownedRequest);
         }
+
+        // Check for SKIP_XSS_VALIDATION in openapi-normalizer parameters
+        String skipXssValidationValue = openapiNormalizer().get("SKIP_XSS_VALIDATION");
+        if (skipXssValidationValue != null) {
+            skipXssValidation = Boolean.parseBoolean(skipXssValidationValue);
+        }
+        additionalProperties.put("skipXssValidation", skipXssValidation);
     }
 
     private void setPackageName(String packageName) {
@@ -469,6 +477,47 @@ public class RustAxumServerCodegen extends AbstractRustCodegen implements Codege
     @Override
     public CodegenOperation fromOperation(String path, String httpMethod, Operation operation, List<Server> servers) {
         CodegenOperation op = super.fromOperation(path, httpMethod, operation, servers);
+
+        // Process form parameters for form-urlencoded and multipart/form-data
+        RequestBody requestBody = ModelUtils.getReferencedRequestBody(this.openAPI, operation.getRequestBody());
+        if (requestBody != null && requestBody.getContent() != null) {
+            String contentType = getContentType(requestBody);
+            if (contentType != null) {
+                contentType = contentType.toLowerCase(Locale.ROOT);
+                boolean isFormUrlEncoded = isMimetypeWwwFormUrlEncoded(contentType);
+                boolean isMultipartFormData = isMimetypeMultipartFormData(contentType);
+                
+                if (isFormUrlEncoded || isMultipartFormData) {
+                    // Process form parameters
+                    Set<String> imports = new HashSet<>();
+                    List<CodegenParameter> formParams = fromRequestBodyToFormParameters(requestBody, imports);
+                    op.isMultipart = isMultipartFormData;
+                    
+                    if (formParams != null && !formParams.isEmpty()) {
+                        for (CodegenParameter cp : formParams) {
+                            setParameterEncodingValues(cp, requestBody.getContent().get(contentType));
+                            postProcessParameter(cp);
+                        }
+                        op.formParams = formParams;
+                        
+                        // Set bodyParam.dataType to reference FormParams model
+                        // For form-urlencoded, the base class creates a bodyParam, so we update it
+                        // For multipart, we need to ensure bodyParam exists
+                        if (op.bodyParam == null && isMultipartFormData) {
+                            // Create a placeholder bodyParam for multipart
+                            CodegenParameter bodyParam = new CodegenParameter();
+                            bodyParam.dataType = "models::" + camelize(op.operationId) + "FormParams";
+                            bodyParam.isModel = true;
+                            bodyParam.required = true;
+                            op.bodyParam = bodyParam;
+                        } else if (op.bodyParam != null) {
+                            op.bodyParam.dataType = "models::" + camelize(op.operationId) + "FormParams";
+                            op.bodyParam.isModel = true;
+                        }
+                    }
+                }
+            }
+        }
 
         String underscoredOperationId = underscore(op.operationId);
         String axumPath = op.path;

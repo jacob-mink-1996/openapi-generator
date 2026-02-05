@@ -100,6 +100,11 @@
   {{/bodyParam}}
 {{/x-consumes-multipart}}
 {{/x-consumes-multipart-related}}
+{{#x-consumes-multipart}}
+{{#formParams.size}}
+  // Multipart form params are validated after extraction
+{{/formParams.size}}
+{{/x-consumes-multipart}}
 
 #[tracing::instrument(skip_all)]
 fn {{#vendorExtensions}}{{{x-operation-id}}}_validation{{/vendorExtensions}}(
@@ -131,6 +136,11 @@ fn {{#vendorExtensions}}{{{x-operation-id}}}_validation{{/vendorExtensions}}(
   {{/bodyParam}}
 {{/x-consumes-multipart}}
 {{/x-consumes-multipart-related}}
+{{#x-consumes-multipart}}
+{{#formParams.size}}
+  body: models::{{{operationIdCamelCase}}}FormParams,
+{{/formParams.size}}
+{{/x-consumes-multipart}}
 ) -> std::result::Result<(
 {{#headerParams.size}}
   models::{{{operationIdCamelCase}}}HeaderParams,
@@ -160,6 +170,11 @@ fn {{#vendorExtensions}}{{{x-operation-id}}}_validation{{/vendorExtensions}}(
   {{/bodyParam}}
 {{/x-consumes-multipart}}
 {{/x-consumes-multipart-related}}
+{{#x-consumes-multipart}}
+{{#formParams.size}}
+  models::{{{operationIdCamelCase}}}FormParams,
+{{/formParams.size}}
+{{/x-consumes-multipart}}
 ), ValidationErrors>
 {
 {{#headerParams.size}}
@@ -197,6 +212,11 @@ fn {{#vendorExtensions}}{{{x-operation-id}}}_validation{{/vendorExtensions}}(
  {{/bodyParam}}
 {{/x-consumes-multipart}}
 {{/x-consumes-multipart-related}}
+{{#x-consumes-multipart}}
+{{#formParams.size}}
+  body.validate()?;
+{{/formParams.size}}
+{{/x-consumes-multipart}}
 
 Ok((
 {{#headerParams.size}}
@@ -217,5 +237,10 @@ Ok((
   {{/bodyParam}}
 {{/x-consumes-multipart}}
 {{/x-consumes-multipart-related}}
+{{#x-consumes-multipart}}
+{{#formParams.size}}
+  body,
+{{/formParams.size}}
+{{/x-consumes-multipart}}
 ))
 }
